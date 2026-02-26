@@ -5,7 +5,7 @@ from datetime import datetime
 from services.auth_service import check_password
 from services.file_handler import parse_uploaded_files, validate_files
 from services.llm_service import OpenAIAgent, GeminiAgent, ClaudeAgent
-from services.logger_service import upload_to_s3, create_downloadable_json
+from services.logger_service import create_downloadable_json
 
 
 st.set_page_config(page_title="Multi-LLM Prompt Tester", layout="wide")
@@ -170,22 +170,6 @@ if uploaded_files:
                 file_name=f"llm_logs_{st.session_state.results['session_id']}.json",
                 mime="application/json",
             )
-
-        with col2:
-            if st.button("☁️ Upload to S3"):
-                with st.spinner("Uploading to S3..."):
-                    upload_result = upload_to_s3(st.session_state.results)
-
-                    if upload_result["status"] == "success":
-                        st.success(f"{upload_result['message']}")
-                        st.info(f"S3 URL: {upload_result.get('s3_url', 'N/A')}")
-                        st.info(f"Local: {upload_result.get('local_path', 'N/A')}")
-                    elif upload_result["status"] == "local":
-                        st.warning(f"⚠️ {upload_result['message']}")
-                        st.info(f"Local: {upload_result.get('local_path', 'N/A')}")
-                    else:
-                        st.error(f"❌ {upload_result['message']}")
-                        st.info(f"Local: {upload_result.get('local_path', 'N/A')}")
 
 else:
     st.info("Upload one or more .md files to get started")
