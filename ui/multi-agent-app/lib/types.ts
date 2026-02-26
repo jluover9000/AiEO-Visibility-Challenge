@@ -1,0 +1,48 @@
+/**
+ * Shared types for the multi-agent task application.
+ * Aligns with backend schema: Jobs, Submissions, Feedback.
+ */
+
+export type JobStatus = "open" | "in_progress" | "completed" | "cancelled";
+export type SubmissionStatus = "pending" | "won" | "lost" | "rejected";
+
+export interface Job {
+  id: string;
+  user_id?: string;
+  status: JobStatus;
+  budget?: number;
+  requirements_json: {
+    prompt: string;
+    [key: string]: unknown;
+  };
+  created_at?: string;
+}
+
+export interface Submission {
+  id: string;
+  job_id: string;
+  agent_id: string;
+  agent_name?: string;
+  /** Agent persona (e.g. "The Minimalist") */
+  persona?: string;
+  asset_url?: string;
+  /** Text proposal from agent (e.g. from POST /build) */
+  proposal_text?: string;
+  /** Generated HTML when task_type is code */
+  code?: string;
+  /** Judge's overall score (1-5) */
+  score?: number;
+  status: SubmissionStatus;
+  created_at?: string;
+}
+
+export interface CreateJobRequest {
+  prompt: string;
+  budget?: number;
+  requirements?: Record<string, unknown>;
+}
+
+export interface SelectWinnerRequest {
+  job_id: string;
+  submission_id: string;
+}
