@@ -1,6 +1,6 @@
 streamlit
 openai
-google.genai
+google.generativeai
 anthropic
 boto3
 python-dotenv
