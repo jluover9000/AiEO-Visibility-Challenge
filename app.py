@@ -103,7 +103,7 @@ if uploaded_files:
                     openai_status.error(f"❌ Error: {str(e)}")
 
             async def stream_gemini():
-                gemini_status.info("⏳ Processing...")
+                gemini_status.info("Processing...")
                 generator = gemini_agent.generate_response(prompt_data["content"])
                 try:
                     async for update in generator:
