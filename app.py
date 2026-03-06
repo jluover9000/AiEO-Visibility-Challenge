@@ -1,11 +1,18 @@
 import streamlit as st
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
+import pandas as pd
 
 from services.auth_service import check_password
-from services.file_handler import parse_uploaded_files, validate_files
+from services.file_handler import (
+    parse_uploaded_files,
+    validate_files,
+    extract_scoring_criteria,
+    remove_scoring_criteria,
+)
 from services.llm_service import OpenAIAgent, GeminiAgent, ClaudeAgent
 from services.logger_service import create_downloadable_json
+from services.scoring_service import score_all_responses
 
 
 st.set_page_config(page_title="Multi-LLM Prompt Tester", layout="wide")
@@ -43,8 +50,10 @@ if uploaded_files:
 
         if "results" not in st.session_state:
             st.session_state.results = {
-                "session_id": datetime.utcnow().strftime("%Y%m%d_%H%M%S"),
-                "timestamp": datetime.utcnow().isoformat() + "Z",
+                "session_id": datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S"),
+                "timestamp": datetime.now(timezone.utc)
+                .isoformat()
+                .replace("+00:00", "Z"),
                 "prompts": [],
             }
 
@@ -54,6 +63,9 @@ if uploaded_files:
 
             with st.expander("View Prompt Content"):
                 st.code(prompt_data["content"], language="markdown")
+
+            criteria = extract_scoring_criteria(prompt_data["content"])
+            clean_prompt = remove_scoring_criteria(prompt_data["content"])
 
             col1, col2, col3 = st.columns(3)
 
@@ -87,7 +99,7 @@ if uploaded_files:
 
             async def stream_openai():
                 openai_status.info("Processing...")
-                generator = openai_agent.generate_response(prompt_data["content"])
+                generator = openai_agent.generate_response(clean_prompt)
                 try:
                     async for update in generator:
                         if update.get("done"):
@@ -104,7 +116,7 @@ if uploaded_files:
 
             async def stream_gemini():
                 gemini_status.info("Processing...")
-                generator = gemini_agent.generate_response(prompt_data["content"])
+                generator = gemini_agent.generate_response(clean_prompt)
                 try:
                     async for update in generator:
                         if update.get("done"):
@@ -121,7 +133,7 @@ if uploaded_files:
 
             async def stream_claude():
                 claude_status.info("Processing...")
-                generator = claude_agent.generate_response(prompt_data["content"])
+                generator = claude_agent.generate_response(clean_prompt)
                 try:
                     async for update in generator:
                         if update.get("done"):
@@ -141,17 +153,129 @@ if uploaded_files:
 
             asyncio.run(run_all())
 
+            st.markdown("---")
+            st.markdown("### Scoring Responses")
+
+            with st.spinner("Sending responses to GPT for evaluation..."):
+                try:
+                    scores = asyncio.run(
+                        score_all_responses(
+                            prompt=prompt_data["content"],
+                            responses={
+                                "openai": state["openai_result"] or {},
+                                "gemini": state["gemini_result"] or {},
+                                "claude": state["claude_result"] or {},
+                            },
+                            criteria=criteria,
+                        )
+                    )
+                except Exception as e:
+                    st.error(f"Scoring failed: {str(e)}")
+                    scores = None
+
+            if scores:
+                st.subheader("Score Comparison")
+
+                score_data = {
+                    "Model": ["OpenAI", "Gemini", "Claude"],
+                    "Score": [
+                        f"{scores['openai'].get('score', 0):.1f}" if isinstance(scores["openai"].get("score"), (int, float)) else "N/A",
+                        f"{scores['gemini'].get('score', 0):.1f}" if isinstance(scores["gemini"].get("score"), (int, float)) else "N/A",
+                        f"{scores['claude'].get('score', 0):.1f}" if isinstance(scores["claude"].get("score"), (int, float)) else "N/A",
+                    ],
+                    "Rank": [
+                        f"#{scores['openai'].get('rank', 'N/A')}",
+                        f"#{scores['gemini'].get('rank', 'N/A')}",
+                        f"#{scores['claude'].get('rank', 'N/A')}",
+                    ],
+                }
+
+                df = pd.DataFrame(score_data)
+
+                def highlight_winner(row):
+                    model_name = row["Model"].lower()
+                    if model_name == scores.get("winner", "").lower():
+                        return ["background-color: #90EE90"] * len(row)
+                    return [""] * len(row)
+
+                styled_df = df.style.apply(highlight_winner, axis=1)
+                st.dataframe(styled_df, width="stretch", hide_index=True)
+
+                winner = scores.get("winner", "openai")
+                winner_score = scores.get(winner, {}).get("score", "N/A")
+                st.success(
+                    f"Winner: **{winner.upper()}** with score **{winner_score}/100**"
+                )
+
+                st.markdown("#### Justifications")
+                for model in ["openai", "gemini", "claude"]:
+                    score_info = scores.get(model, {})
+                    rank = score_info.get("rank", "N/A")
+                    score = score_info.get("score", "N/A")
+                    justification = score_info.get(
+                        "justification", "No justification available"
+                    )
+
+                    with st.expander(
+                        f"{model.upper()} - Score: {score}/100, Rank: #{rank}"
+                    ):
+                        st.write(justification)
+
+                if criteria:
+                    st.info(f"**Scoring Criteria:** {criteria}")
+
             prompt_result = {
                 "filename": prompt_data["filename"],
                 "content": prompt_data["content"],
                 "responses": {
-                    "openai": state["openai_result"]
-                    or {"error": "Failed to generate response"},
-                    "gemini": state["gemini_result"]
-                    or {"error": "Failed to generate response"},
-                    "claude": state["claude_result"]
-                    or {"error": "Failed to generate response"},
+                    "openai": {
+                        **(
+                            state["openai_result"]
+                            or {"error": "Failed to generate response"}
+                        ),
+                        **(
+                            {
+                                "score": scores["openai"]["score"],
+                                "rank": scores["openai"]["rank"],
+                                "justification": scores["openai"]["justification"],
+                            }
+                            if scores
+                            else {}
+                        ),
+                    },
+                    "gemini": {
+                        **(
+                            state["gemini_result"]
+                            or {"error": "Failed to generate response"}
+                        ),
+                        **(
+                            {
+                                "score": scores["gemini"]["score"],
+                                "rank": scores["gemini"]["rank"],
+                                "justification": scores["gemini"]["justification"],
+                            }
+                            if scores
+                            else {}
+                        ),
+                    },
+                    "claude": {
+                        **(
+                            state["claude_result"]
+                            or {"error": "Failed to generate response"}
+                        ),
+                        **(
+                            {
+                                "score": scores["claude"]["score"],
+                                "rank": scores["claude"]["rank"],
+                                "justification": scores["claude"]["justification"],
+                            }
+                            if scores
+                            else {}
+                        ),
+                    },
                 },
+                "winner": scores.get("winner") if scores else None,
+                "scoring_criteria": criteria if criteria else None,
             }
             st.session_state.results["prompts"].append(prompt_result)
 

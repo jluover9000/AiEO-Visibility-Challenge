@@ -1,10 +1,10 @@
 import asyncio
 from typing import AsyncGenerator, Dict, List
-from datetime import datetime
+from datetime import datetime, timezone
 import time
 
 import openai
-import google.generativeai as genai
+from google import genai
 from anthropic import Anthropic
 
 from config import (
@@ -64,7 +64,7 @@ class OpenAIAgent:
                 "model": self.model,
                 "response": full_response,
                 "duration_seconds": round(duration, 2),
-                "timestamp": datetime.utcnow().isoformat() + "Z",
+                "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
                 "error": error,
             },
         }
@@ -74,8 +74,7 @@ class GeminiAgent:
     """Agent for Google Gemini API with streaming support."""
 
     def __init__(self):
-        genai.configure(api_key=GOOGLE_API_KEY)
-        self.model = genai.GenerativeModel(GEMINI_MODEL)
+        self.client = genai.Client(api_key=GOOGLE_API_KEY)
         self.model_name = GEMINI_MODEL
 
     async def generate_response(self, prompt: str):
@@ -93,7 +92,10 @@ class GeminiAgent:
         error = None
 
         try:
-            response = self.model.generate_content(prompt, stream=True)
+            response = self.client.models.generate_content_stream(
+                model=self.model_name,
+                contents=prompt
+            )
 
             for chunk in response:
                 if chunk.text:
@@ -113,7 +115,7 @@ class GeminiAgent:
                 "model": self.model_name,
                 "response": full_response,
                 "duration_seconds": round(duration, 2),
-                "timestamp": datetime.utcnow().isoformat() + "Z",
+                "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
                 "error": error,
             },
         }
@@ -163,7 +165,7 @@ class ClaudeAgent:
                 "model": self.model,
                 "response": full_response,
                 "duration_seconds": round(duration, 2),
-                "timestamp": datetime.utcnow().isoformat() + "Z",
+                "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
                 "error": error,
             },
         }
@@ -184,8 +186,8 @@ async def process_prompts_parallel(prompts: List[Dict]) -> Dict:
     claude_agent = ClaudeAgent()
 
     results = {
-        "session_id": datetime.utcnow().strftime("%Y%m%d_%H%M%S"),
-        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "session_id": datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S"),
+        "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "prompts": [],
     }
 

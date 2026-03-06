@@ -1,6 +1,5 @@
 import json
-import boto3
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Optional
 from botocore.exceptions import ClientError, NoCredentialsError
 
@@ -28,7 +27,9 @@ def save_log_locally(results: Dict) -> str:
     Returns:
         Local file path
     """
-    session_id = results.get("session_id", datetime.utcnow().strftime("%Y%m%d_%H%M%S"))
+    session_id = results.get(
+        "session_id", datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    )
     filename = f"llm_logs_{session_id}.json"
 
     with open(filename, "w", encoding="utf-8") as f:
