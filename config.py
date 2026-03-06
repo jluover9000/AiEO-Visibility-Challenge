@@ -13,7 +13,7 @@ APP_PASSWORD = os.getenv("APP_PASSWORD")
 
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
-CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-sonnet-4-6")
+CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-haiku-4-5")
 
 GRADING_MODEL = os.getenv("GRADING_MODEL", "gpt-5-mini")
 DEFAULT_SCORING_CRITERIA = os.getenv(
