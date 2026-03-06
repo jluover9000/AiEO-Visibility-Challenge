@@ -41,6 +41,60 @@ Evaluate for creativity, technical accuracy, and clarity.
 If no explicit criteria is found in your prompt, the system uses:
 > "Evaluate the response for accuracy, relevance, and helpfulness on a 0-100 scale."
 
+## Using Personas
+
+### What are Personas?
+
+Personas are specialized roles that shape how LLMs respond. When you specify a persona, all three LLMs receive it as a system message, changing their behavior, tone, and expertise.
+
+### Available Personas
+
+- **canadian_business_startup**: Expert business advisor for starting businesses in Canada
+- **educational_counselor**: Canadian education and scholarship advisor for students
+
+### Adding Persona to Your Prompt
+
+Add a persona header at the start of your prompt:
+
+```markdown
+Persona: canadian_business_startup
+
+Your actual prompt here...
+
+--- SCORING CRITERIA ---
+Your scoring criteria here...
+--- END SCORING CRITERIA ---
+```
+
+### Persona Format
+
+```
+Persona: <persona_name>
+```
+
+The persona name should match a file in the `personas/` directory (without the .md extension).
+
+### How Personas Affect Scoring
+
+When a persona is used:
+- The scoring agent receives the persona context
+- Evaluation includes whether the response aligns with the persona's role and expertise
+- Scores consider both the criteria AND persona adherence
+
+### Example with Persona
+
+```markdown
+Persona: educational_counselor
+
+I want to study computer science in Canada. What universities should I consider?
+
+--- SCORING CRITERIA ---
+Evaluate for accuracy of program information and helpfulness for students.
+--- END SCORING CRITERIA ---
+```
+
+The LLMs will respond as an educational counselor, and scoring will verify they maintained that role appropriately.
+
 ## Scoring Output
 
 ### Comparison Table
@@ -183,13 +237,17 @@ You can use different models for grading:
 
 - [ ] Upload prompt without scoring criteria (uses defaults)
 - [ ] Upload prompt with explicit scoring instructions
+- [ ] Upload prompt without persona (default behavior)
+- [ ] Upload prompt with canadian_business_startup persona
+- [ ] Upload prompt with educational_counselor persona
 - [ ] Verify all three responses get scored
 - [ ] Check comparison table displays correctly
 - [ ] Verify winner is highlighted in green
 - [ ] Expand justification sections
-- [ ] Download JSON and verify scores are included
+- [ ] Download JSON and verify scores, personas are included
 - [ ] Test with multiple prompts in one session
 - [ ] Verify scoring criteria is parsed correctly
+- [ ] Verify persona is applied correctly (check response content)
 - [ ] Check error handling (disconnect network during scoring)
 
 ## Troubleshooting

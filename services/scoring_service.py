@@ -9,6 +9,7 @@ async def score_response(
     prompt: str,
     response: str,
     criteria: Optional[str] = None,
+    persona: Optional[str] = None,
     grading_model: str = None,
 ) -> Dict:
     """
@@ -18,6 +19,7 @@ async def score_response(
         prompt: Original input prompt
         response: LLM's response to score
         criteria: Optional scoring criteria (extracted from prompt)
+        persona: Optional persona context the LLM was operating under
         grading_model: OpenAI model for grading (default: from config)
 
     Returns:
@@ -34,8 +36,17 @@ async def score_response(
     if criteria is None:
         criteria = DEFAULT_SCORING_CRITERIA
 
-    grading_prompt = f"""You are an expert evaluator of AI responses. Your task is to score the following response on a scale of 0-100.
+    persona_context = ""
+    if persona:
+        persona_context = f"""
+The AI was operating under this persona/role:
+{persona}
 
+Consider whether the response aligns with the persona's expertise, tone, and responsibilities.
+"""
+
+    grading_prompt = f"""You are an expert evaluator of AI responses. Your task is to score the following response on a scale of 0-100.
+{persona_context}
 Evaluation Criteria: {criteria}
 
 Original Prompt:
@@ -185,7 +196,10 @@ WINNER: [openai, gemini, or claude]
 
 
 async def score_all_responses(
-    prompt: str, responses: Dict[str, Dict], criteria: Optional[str] = None
+    prompt: str, 
+    responses: Dict[str, Dict], 
+    criteria: Optional[str] = None,
+    persona: Optional[str] = None
 ) -> Dict:
     """
     Score all three LLM responses in parallel.
@@ -194,6 +208,7 @@ async def score_all_responses(
         prompt: Original input prompt
         responses: {"openai": {...}, "gemini": {...}, "claude": {...}}
         criteria: Optional scoring criteria
+        persona: Optional persona context the LLMs were operating under
 
     Returns:
         {
@@ -209,9 +224,9 @@ async def score_all_responses(
         "claude": responses.get("claude", {}).get("response", ""),
     }
 
-    openai_score_task = score_response(prompt, response_texts["openai"], criteria)
-    gemini_score_task = score_response(prompt, response_texts["gemini"], criteria)
-    claude_score_task = score_response(prompt, response_texts["claude"], criteria)
+    openai_score_task = score_response(prompt, response_texts["openai"], criteria, persona)
+    gemini_score_task = score_response(prompt, response_texts["gemini"], criteria, persona)
+    claude_score_task = score_response(prompt, response_texts["claude"], criteria, persona)
 
     openai_score, gemini_score, claude_score = await asyncio.gather(
         openai_score_task, gemini_score_task, claude_score_task

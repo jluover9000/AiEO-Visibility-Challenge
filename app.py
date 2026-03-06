@@ -9,6 +9,9 @@ from services.file_handler import (
     validate_files,
     extract_scoring_criteria,
     remove_scoring_criteria,
+    extract_persona,
+    load_persona,
+    remove_persona_header,
 )
 from services.llm_service import OpenAIAgent, GeminiAgent, ClaudeAgent
 from services.logger_service import create_downloadable_json
@@ -64,8 +67,19 @@ if uploaded_files:
             with st.expander("View Prompt Content"):
                 st.code(prompt_data["content"], language="markdown")
 
+            persona_name = extract_persona(prompt_data["content"])
+            persona_content = load_persona(persona_name) if persona_name else None
+            
+            if persona_name:
+                if persona_content:
+                    st.info(f"Using Persona: **{persona_name}**")
+                else:
+                    st.warning(f"Persona '{persona_name}' not found. Proceeding without persona.")
+                    persona_content = None
+            
             criteria = extract_scoring_criteria(prompt_data["content"])
             clean_prompt = remove_scoring_criteria(prompt_data["content"])
+            clean_prompt = remove_persona_header(clean_prompt)
 
             col1, col2, col3 = st.columns(3)
 
@@ -99,7 +113,7 @@ if uploaded_files:
 
             async def stream_openai():
                 openai_status.info("Processing...")
-                generator = openai_agent.generate_response(clean_prompt)
+                generator = openai_agent.generate_response(clean_prompt, persona_content)
                 try:
                     async for update in generator:
                         if update.get("done"):
@@ -116,7 +130,7 @@ if uploaded_files:
 
             async def stream_gemini():
                 gemini_status.info("Processing...")
-                generator = gemini_agent.generate_response(clean_prompt)
+                generator = gemini_agent.generate_response(clean_prompt, persona_content)
                 try:
                     async for update in generator:
                         if update.get("done"):
@@ -133,7 +147,7 @@ if uploaded_files:
 
             async def stream_claude():
                 claude_status.info("Processing...")
-                generator = claude_agent.generate_response(clean_prompt)
+                generator = claude_agent.generate_response(clean_prompt, persona_content)
                 try:
                     async for update in generator:
                         if update.get("done"):
@@ -167,6 +181,7 @@ if uploaded_files:
                                 "claude": state["claude_result"] or {},
                             },
                             criteria=criteria,
+                            persona=persona_content,
                         )
                     )
                 except Exception as e:
@@ -227,6 +242,7 @@ if uploaded_files:
             prompt_result = {
                 "filename": prompt_data["filename"],
                 "content": prompt_data["content"],
+                "persona": persona_name,
                 "responses": {
                     "openai": {
                         **(

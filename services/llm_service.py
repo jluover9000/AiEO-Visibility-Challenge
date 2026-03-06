@@ -1,5 +1,5 @@
 import asyncio
-from typing import AsyncGenerator, Dict, List
+from typing import AsyncGenerator, Dict, List, Optional
 from datetime import datetime, timezone
 import time
 
@@ -24,12 +24,13 @@ class OpenAIAgent:
         self.client = openai.OpenAI(api_key=OPENAI_API_KEY)
         self.model = OPENAI_MODEL
 
-    async def generate_response(self, prompt: str):
+    async def generate_response(self, prompt: str, persona: Optional[str] = None):
         """
         Generate response from OpenAI with streaming.
 
         Args:
             prompt: The input prompt text
+            persona: Optional persona/system message to apply
 
         Yields:
             Dicts with streaming chunks and final result
@@ -39,9 +40,14 @@ class OpenAIAgent:
         error = None
 
         try:
+            messages = []
+            if persona:
+                messages.append({"role": "system", "content": persona})
+            messages.append({"role": "user", "content": prompt})
+            
             stream = self.client.chat.completions.create(
                 model=self.model,
-                messages=[{"role": "user", "content": prompt}],
+                messages=messages,
                 stream=True,
             )
 
@@ -77,12 +83,13 @@ class GeminiAgent:
         self.client = genai.Client(api_key=GOOGLE_API_KEY)
         self.model_name = GEMINI_MODEL
 
-    async def generate_response(self, prompt: str):
+    async def generate_response(self, prompt: str, persona: Optional[str] = None):
         """
         Generate response from Gemini with streaming.
 
         Args:
             prompt: The input prompt text
+            persona: Optional persona/system instruction to apply
 
         Yields:
             Dicts with streaming chunks and final result
@@ -92,9 +99,12 @@ class GeminiAgent:
         error = None
 
         try:
+            config = {"system_instruction": persona} if persona else {}
+            
             response = self.client.models.generate_content_stream(
                 model=self.model_name,
-                contents=prompt
+                contents=prompt,
+                config=config
             )
 
             for chunk in response:
@@ -128,12 +138,13 @@ class ClaudeAgent:
         self.client = Anthropic(api_key=ANTHROPIC_API_KEY)
         self.model = CLAUDE_MODEL
 
-    async def generate_response(self, prompt: str):
+    async def generate_response(self, prompt: str, persona: Optional[str] = None):
         """
         Generate response from Claude with streaming.
 
         Args:
             prompt: The input prompt text
+            persona: Optional persona/system message to apply
 
         Yields:
             Dicts with streaming chunks and final result
@@ -143,11 +154,16 @@ class ClaudeAgent:
         error = None
 
         try:
-            with self.client.messages.stream(
-                model=self.model,
-                max_tokens=4096,
-                messages=[{"role": "user", "content": prompt}],
-            ) as stream:
+            stream_params = {
+                "model": self.model,
+                "max_tokens": 4096,
+                "messages": [{"role": "user", "content": prompt}],
+            }
+            
+            if persona:
+                stream_params["system"] = persona
+            
+            with self.client.messages.stream(**stream_params) as stream:
                 for text in stream.text_stream:
                     full_response += text
                     yield {"chunk": text, "done": False}

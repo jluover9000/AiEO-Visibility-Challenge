@@ -5,6 +5,7 @@ A Streamlit web application that allows you to test prompts across multiple Larg
 ## Features
 
 - **Multi-LLM Support**: Test with OpenAI GPT-4, Google Gemini, and Anthropic Claude simultaneously
+- **Persona System**: Apply specialized personas (Canadian Business Advisor, Educational Counselor) to shape LLM responses
 - **Real-time Streaming**: Watch responses stream in real-time across all three models
 - **Automatic Scoring**: AI-powered evaluation and ranking of responses using model-graded scoring
 - **Winner Detection**: Automatically identifies the best response based on scoring criteria
@@ -37,6 +38,15 @@ flowchart TD
     Table -->|Include| JSONLog[JSON Download]
     Table -->|Identify| Winner[Highlight Winner]
 ```
+
+## Available Personas
+
+The system includes specialized personas that shape how LLMs respond:
+
+- **canadian_business_startup**: Expert business advisor for starting businesses in Canada
+- **educational_counselor**: Canadian education and scholarship advisor for students
+
+Personas are optional. Without a persona, LLMs respond in their default mode.
 
 ## Prerequisites
 
