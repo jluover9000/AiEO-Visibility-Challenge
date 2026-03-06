@@ -1,6 +1,6 @@
 # Multi-LLM Prompt Tester with Automatic Scoring
 
-A Streamlit web application that allows you to test prompts across multiple Large Language Models (OpenAI, Google Gemini, and Anthropic Claude) simultaneously. View real-time streaming responses side-by-side, get automatic AI-powered scoring and ranking, and save results to JSON logs with optional S3 upload.
+A Streamlit web application that allows you to test prompts across multiple Large Language Models (OpenAI, Google Gemini, and Anthropic Claude) simultaneously. View real-time streaming responses side-by-side, get automatic AI-powered scoring and ranking, and save results to JSON logs.
 
 ## Features
 
@@ -19,24 +19,22 @@ A Streamlit web application that allows you to test prompts across multiple Larg
 
 ```mermaid
 flowchart TD
-    Prompt[Upload .md Prompt] -->|Parse| Extract[Extract Scoring Criteria]
-    Extract -->|Optional criteria| LLMs[3 LLMs Generate Responses]
+    Prompt[Upload .md Prompt] -->|Parse| ExtractPersona[Extract Persona Header]
+    ExtractPersona -->|persona_name or None| LoadPersona[Load Persona File]
+    LoadPersona -->|Persona Content| PrepareMessages[Prepare Messages]
     
-    LLMs -->|OpenAI Response| Scorer1[Inspect-AI Scorer]
-    LLMs -->|Gemini Response| Scorer2[Inspect-AI Scorer]
-    LLMs -->|Claude Response| Scorer3[Inspect-AI Scorer]
+    PrepareMessages -->|System: Persona + User: Clean Prompt| OpenAI[OpenAI Agent]
+    PrepareMessages -->|System: Persona + User: Clean Prompt| Gemini[Gemini Agent]
+    PrepareMessages -->|System: Persona + User: Clean Prompt| Claude[Claude Agent]
     
-    Scorer1 -->|Model-graded| Score1[Score + Justification]
-    Scorer2 -->|Model-graded| Score2[Score + Justification]
-    Scorer3 -->|Model-graded| Score3[Score + Justification]
+    OpenAI --> Responses[Collect Responses]
+    Gemini --> Responses
+    Claude --> Responses
     
-    Score1 -->|Aggregate| Table[Comparison Table]
-    Score2 -->|Aggregate| Table
-    Score3 -->|Aggregate| Table
+    Responses --> Scorer[Scoring Agent]
+    LoadPersona -.->|Include in scoring context| Scorer
     
-    Table -->|Display| UI[Streamlit UI]
-    Table -->|Include| JSONLog[JSON Download]
-    Table -->|Identify| Winner[Highlight Winner]
+    Scorer -->|Persona-aware scores| Display[Display Results]
 ```
 
 ## Available Personas
@@ -55,4 +53,3 @@ Personas are optional. Without a persona, LLMs respond in their default mode.
   - OpenAI
   - Google Gemini
   - Anthropic Claude
-- AWS account (optional, for S3 uploads)
