@@ -5,4 +5,8 @@ anthropic==0.84.0
 python-dotenv==1.2.2
 pandas
 inspect-ai>=0.3.188
-
+langchain-classic==1.0.2
+langchain-community==0.4.1
+langchain-core==1.2.18
+langchain-text-splitters==1.1.1
+langsmith==0.7.16
