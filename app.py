@@ -17,6 +17,7 @@ from services.file_handler import (
 from services.llm_service import OpenAIAgent, GeminiAgent, ClaudeAgent
 from services.logger_service import create_downloadable_json
 from services.scoring_service import score_all_responses
+from rag.retrieval import retrieve_context
 
 
 st.set_page_config(page_title="Multi-LLM Prompt Tester", layout="wide")
@@ -179,6 +180,16 @@ if uploaded_files:
             st.markdown("---")
             st.markdown("### Scoring Responses")
 
+            try:
+                rag_context = retrieve_context(clean_prompt)
+            except Exception as e:
+                st.warning(f"RAG retrieval failed, scoring without context: {str(e)}")
+                rag_context = ""
+
+            if rag_context:
+                chunk_count = len(rag_context.split("\n\n"))
+                st.caption(f"Retrieved {chunk_count} context chunk(s) from the knowledge base.")
+
             with st.spinner("Sending responses to GPT for evaluation..."):
                 try:
                     scores = asyncio.run(
@@ -190,6 +201,7 @@ if uploaded_files:
                                 "claude": state["claude_result"] or {},
                             },
                             scoring_system_prompt=scoring_system_prompt,
+                            context=rag_context or None,
                         )
                     )
                 except Exception as e:
@@ -252,6 +264,7 @@ if uploaded_files:
                 "question": clean_prompt,
                 "persona": persona_name,
                 "scoring_prompt": scoring_prompt_name,
+                "rag_context": rag_context or None,
                 "responses": {
                     "openai": {
                         **(

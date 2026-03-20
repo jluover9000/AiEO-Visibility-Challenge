@@ -25,6 +25,7 @@ async def score_response(
     response: str,
     scoring_system_prompt: Optional[str] = None,
     grading_model: str = None,
+    context: Optional[str] = None,
 ) -> Dict:
     """
     Score a single advisor response using the scoring model.
@@ -36,6 +37,9 @@ async def score_response(
                                scoring_prompts/<name>.md. Falls back to DEFAULT_SCORING_CRITERIA
                                if not provided.
         grading_model: OpenAI model for grading (default: from config)
+        context: Optional reference context retrieved from the vector store via BM25.
+                 Appended to the user message so the scoring model can verify the
+                 advisor's response against grounded source material.
 
     Returns:
         {
@@ -55,6 +59,12 @@ async def score_response(
 
 Advisor Response:
 {response}"""
+
+    if context:
+        user_message += f"""
+
+Reference Context:
+{context}"""
 
     try:
         client = openai.OpenAI(api_key=OPENAI_API_KEY)
@@ -100,6 +110,7 @@ async def score_all_responses(
     question: str,
     responses: Dict[str, Dict],
     scoring_system_prompt: Optional[str] = None,
+    context: Optional[str] = None,
 ) -> Dict:
     """
     Score all three advisor responses in parallel.
@@ -111,6 +122,9 @@ async def score_all_responses(
                    (must contain a "response" key with the text).
         scoring_system_prompt: Full system prompt for the scoring model.
                                Falls back to DEFAULT_SCORING_CRITERIA if not provided.
+        context: Optional reference context retrieved from the vector store via BM25.
+                 The same context is passed to all three scoring calls since the
+                 question is identical for all advisors.
 
     Returns:
         {
@@ -126,9 +140,9 @@ async def score_all_responses(
         "claude": responses.get("claude", {}).get("response", ""),
     }
 
-    openai_score_task = score_response(question, response_texts["openai"], scoring_system_prompt)
-    gemini_score_task = score_response(question, response_texts["gemini"], scoring_system_prompt)
-    claude_score_task = score_response(question, response_texts["claude"], scoring_system_prompt)
+    openai_score_task = score_response(question, response_texts["openai"], scoring_system_prompt, context=context)
+    gemini_score_task = score_response(question, response_texts["gemini"], scoring_system_prompt, context=context)
+    claude_score_task = score_response(question, response_texts["claude"], scoring_system_prompt, context=context)
 
     openai_score, gemini_score, claude_score = await asyncio.gather(
         openai_score_task, gemini_score_task, claude_score_task
