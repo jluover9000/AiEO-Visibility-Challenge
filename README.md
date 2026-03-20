@@ -8,10 +8,11 @@ A Streamlit web application that allows you to test prompts across multiple Larg
 - **Persona System**: Apply specialized personas (Canadian Business Advisor, Educational Counselor) to shape LLM responses
 - **Real-time Streaming**: Watch responses stream in real-time across all three models
 - **Automatic Scoring**: AI-powered evaluation and ranking of responses using model-graded scoring
+- **RAG-Augmented Scoring**: BM25 retrieval from a local knowledge base injects grounded reference context into the scoring model
 - **Winner Detection**: Automatically identifies the best response based on scoring criteria
 - **Batch Processing**: Upload multiple .md files and process them all at once
-- **JSON Logging**: Save all responses, scores, and rankings as structured JSON
-- **Flexible Criteria**: Define custom scoring criteria in your prompts or use defaults
+- **JSON Logging**: Save all responses, scores, rankings, and retrieved context as structured JSON
+- **Separate Scoring Prompts**: Define evaluation instructions in dedicated `scoring_prompts/<name>.md` files
 - **Password Protection**: Simple authentication to control access
 - **Comparison Table**: View scores and ranks side-by-side
 
@@ -19,22 +20,29 @@ A Streamlit web application that allows you to test prompts across multiple Larg
 
 ```mermaid
 flowchart TD
-    Prompt[Upload .md Prompt] -->|Parse| ExtractPersona[Extract Persona Header]
-    ExtractPersona -->|persona_name or None| LoadPersona[Load Persona File]
-    LoadPersona -->|Persona Content| PrepareMessages[Prepare Messages]
-    
-    PrepareMessages -->|System: Persona + User: Clean Prompt| OpenAI[OpenAI Agent]
-    PrepareMessages -->|System: Persona + User: Clean Prompt| Gemini[Gemini Agent]
-    PrepareMessages -->|System: Persona + User: Clean Prompt| Claude[Claude Agent]
-    
-    OpenAI --> Responses[Collect Responses]
-    Gemini --> Responses
-    Claude --> Responses
-    
-    Responses --> Scorer[Scoring Agent]
-    LoadPersona -.->|Include in scoring context| Scorer
-    
-    Scorer -->|Persona-aware scores| Display[Display Results]
+    Prompt["Upload .md Prompt\n(Persona: + Scoring-Prompt: headers)"]
+    Prompt -->|"Extract Persona header"| LoadPersona["personas/<name>.md\n(Advisor system prompt)"]
+    Prompt -->|"Extract Scoring-Prompt header"| LoadScoringPrompt["scoring_prompts/<name>.md\n(Scoring system prompt)"]
+    Prompt -->|"Clean question\n(headers stripped)"| Advisors
+
+    subgraph Advisors [Advisor Models - parallel]
+        OpenAI["OpenAI\nsystem=persona, user=question"]
+        Gemini["Gemini\nsystem=persona, user=question"]
+        Claude["Claude\nsystem=persona, user=question"]
+    end
+
+    LoadPersona -->|"system prompt"| Advisors
+
+    Advisors -->|"3 responses"| Scorer
+
+    Prompt -->|"Clean question"| BM25["BM25 Retriever\nvector_store/chunks.pkl"]
+    BM25 -->|"top-K context chunks"| Scorer
+
+    LoadScoringPrompt -->|"system prompt"| Scorer
+
+    Scorer["Scoring Model\nGPT\nsystem=scoring_prompt\nuser=question + response + context"]
+
+    Scorer -->|"score + justification x3"| Display["Results + JSON Log\n(scores, ranks, winner, rag_context)"]
 ```
 
 ## Available Personas
