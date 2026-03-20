@@ -5,21 +5,36 @@ import openai
 from config import OPENAI_API_KEY, GRADING_MODEL, DEFAULT_SCORING_CRITERIA
 
 
+def _build_default_scoring_system_prompt() -> str:
+    """Build a fallback scoring system prompt from DEFAULT_SCORING_CRITERIA."""
+    return f"""
+You are an expert evaluator of AI responses. Your task is to score the following response on a scale of 0-100.
+
+Evaluation Criteria: {DEFAULT_SCORING_CRITERIA}
+
+You will receive the user's original question and the advisor's response.
+
+Respond in this exact format:
+SCORE: [number from 0 to 100]
+JUSTIFICATION: [2-3 sentences explaining the score, referencing specific strengths or gaps]
+"""
+
+
 async def score_response(
-    prompt: str,
+    question: str,
     response: str,
-    criteria: Optional[str] = None,
-    persona: Optional[str] = None,
+    scoring_system_prompt: Optional[str] = None,
     grading_model: str = None,
 ) -> Dict:
     """
-    Score a single LLM response using model-graded evaluation.
+    Score a single advisor response using the scoring model.
 
     Args:
-        prompt: Original input prompt
-        response: LLM's response to score
-        criteria: Optional scoring criteria (extracted from prompt)
-        persona: Optional persona context the LLM was operating under
+        question: The original user question sent to the advisor models
+        response: The advisor model's response to evaluate
+        scoring_system_prompt: Full system prompt for the scoring model loaded from
+                               scoring_prompts/<name>.md. Falls back to DEFAULT_SCORING_CRITERIA
+                               if not provided.
         grading_model: OpenAI model for grading (default: from config)
 
     Returns:
@@ -27,48 +42,28 @@ async def score_response(
             "score": 85,
             "justification": "...",
             "grading_model": "gpt-4o-mini",
-            "criteria_used": "..."
         }
     """
     if grading_model is None:
         grading_model = GRADING_MODEL
 
-    if criteria is None:
-        criteria = DEFAULT_SCORING_CRITERIA
+    if not scoring_system_prompt:
+        scoring_system_prompt = _build_default_scoring_system_prompt()
 
-    persona_context = ""
-    if persona:
-        persona_context = f"""
-The AI was operating under this persona/role:
-{persona}
+    user_message = f"""User Question:
+{question}
 
-Consider whether the response aligns with the persona's expertise, tone, and responsibilities.
-"""
-
-    grading_prompt = f"""You are an expert evaluator of AI responses. Your task is to score the following response on a scale of 0-100.
-{persona_context}
-Evaluation Criteria: {criteria}
-
-Original Prompt:
-{prompt}
-
-Response to Evaluate:
-{response}
-
-Please provide:
-1. A numerical score from 0-100 (use whole numbers or decimals like 85.5 if appropriate)
-2. A brief justification (2-3 sentences) explaining your score
-
-Format your response as:
-SCORE: [number]
-JUSTIFICATION: [your explanation]
-"""
+Advisor Response:
+{response}"""
 
     try:
         client = openai.OpenAI(api_key=OPENAI_API_KEY)
         completion = client.chat.completions.create(
             model=grading_model,
-            messages=[{"role": "user", "content": grading_prompt}],
+            messages=[
+                {"role": "system", "content": scoring_system_prompt},
+                {"role": "user", "content": user_message},
+            ],
         )
 
         result_text = completion.choices[0].message.content
@@ -90,7 +85,6 @@ JUSTIFICATION: [your explanation]
             "score": score,
             "justification": justification,
             "grading_model": grading_model,
-            "criteria_used": criteria,
         }
 
     except Exception as e:
@@ -98,123 +92,31 @@ JUSTIFICATION: [your explanation]
             "score": None,
             "justification": f"Scoring failed: {str(e)}",
             "grading_model": grading_model,
-            "criteria_used": criteria,
-            "error": str(e),
-        }
-
-
-async def rank_responses(
-    prompt: str, responses: Dict[str, str], criteria: Optional[str] = None
-) -> Dict[str, int]:
-    """
-    Compare all 3 responses and rank them.
-
-    Args:
-        prompt: Original input prompt
-        responses: {"openai": "...", "gemini": "...", "claude": "..."}
-        criteria: Optional scoring criteria
-
-    Returns:
-        {
-            "openai": 1,
-            "gemini": 2,
-            "claude": 3,
-            "winner": "openai"
-        }
-    """
-    if criteria is None:
-        criteria = DEFAULT_SCORING_CRITERIA
-
-    ranking_prompt = f"""You are comparing three different AI model responses to the same prompt. Rank them from 1 (best) to 3 (worst).
-
-Evaluation Criteria: {criteria}
-
-Original Prompt:
-{prompt}
-
-Response A (OpenAI):
-{responses.get('openai', 'No response')}
-
-Response B (Gemini):
-{responses.get('gemini', 'No response')}
-
-Response C (Claude):
-{responses.get('claude', 'No response')}
-
-Rank these responses from 1 (best) to 3 (worst) based on the criteria.
-
-Format your response as:
-OPENAI_RANK: [1, 2, or 3]
-GEMINI_RANK: [1, 2, or 3]
-CLAUDE_RANK: [1, 2, or 3]
-WINNER: [openai, gemini, or claude]
-"""
-
-    try:
-        client = openai.OpenAI(api_key=OPENAI_API_KEY)
-        completion = client.chat.completions.create(
-            model=GRADING_MODEL,
-            messages=[{"role": "user", "content": ranking_prompt}],
-        )
-
-        result_text = completion.choices[0].message.content
-
-        openai_rank_match = re.search(
-            r"OPENAI_RANK:\s*(\d)", result_text, re.IGNORECASE
-        )
-        gemini_rank_match = re.search(
-            r"GEMINI_RANK:\s*(\d)", result_text, re.IGNORECASE
-        )
-        claude_rank_match = re.search(
-            r"CLAUDE_RANK:\s*(\d)", result_text, re.IGNORECASE
-        )
-        winner_match = re.search(
-            r"WINNER:\s*(openai|gemini|claude)", result_text, re.IGNORECASE
-        )
-
-        ranks = {
-            "openai": int(openai_rank_match.group(1)) if openai_rank_match else 2,
-            "gemini": int(gemini_rank_match.group(1)) if gemini_rank_match else 2,
-            "claude": int(claude_rank_match.group(1)) if claude_rank_match else 2,
-        }
-
-        winner = (
-            winner_match.group(1).lower() if winner_match else min(ranks, key=ranks.get)
-        )
-        ranks["winner"] = winner
-
-        return ranks
-
-    except Exception as e:
-        return {
-            "openai": 1,
-            "gemini": 2,
-            "claude": 3,
-            "winner": "openai",
             "error": str(e),
         }
 
 
 async def score_all_responses(
-    prompt: str, 
-    responses: Dict[str, Dict], 
-    criteria: Optional[str] = None,
-    persona: Optional[str] = None
+    question: str,
+    responses: Dict[str, Dict],
+    scoring_system_prompt: Optional[str] = None,
 ) -> Dict:
     """
-    Score all three LLM responses in parallel.
+    Score all three advisor responses in parallel.
 
     Args:
-        prompt: Original input prompt
+        question: The original user question sent to the advisor models
         responses: {"openai": {...}, "gemini": {...}, "claude": {...}}
-        criteria: Optional scoring criteria
-        persona: Optional persona context the LLMs were operating under
+                   Each value is the result dict from the advisor agent
+                   (must contain a "response" key with the text).
+        scoring_system_prompt: Full system prompt for the scoring model.
+                               Falls back to DEFAULT_SCORING_CRITERIA if not provided.
 
     Returns:
         {
-            "openai": {"score": 8.5, "justification": "...", "rank": 1},
-            "gemini": {"score": 7.2, "justification": "...", "rank": 3},
-            "claude": {"score": 8.0, "justification": "...", "rank": 2},
+            "openai": {"score": 85, "justification": "...", "rank": 1},
+            "gemini": {"score": 72, "justification": "...", "rank": 3},
+            "claude": {"score": 80, "justification": "...", "rank": 2},
             "winner": "openai"
         }
     """
@@ -224,33 +126,28 @@ async def score_all_responses(
         "claude": responses.get("claude", {}).get("response", ""),
     }
 
-    openai_score_task = score_response(prompt, response_texts["openai"], criteria, persona)
-    gemini_score_task = score_response(prompt, response_texts["gemini"], criteria, persona)
-    claude_score_task = score_response(prompt, response_texts["claude"], criteria, persona)
+    openai_score_task = score_response(question, response_texts["openai"], scoring_system_prompt)
+    gemini_score_task = score_response(question, response_texts["gemini"], scoring_system_prompt)
+    claude_score_task = score_response(question, response_texts["claude"], scoring_system_prompt)
 
     openai_score, gemini_score, claude_score = await asyncio.gather(
         openai_score_task, gemini_score_task, claude_score_task
     )
 
     model_scores = {
-        "openai": openai_score.get("score", 0),
-        "gemini": gemini_score.get("score", 0),
-        "claude": claude_score.get("score", 0),
+        "openai": openai_score.get("score") or 0,
+        "gemini": gemini_score.get("score") or 0,
+        "claude": claude_score.get("score") or 0,
     }
-    
+
     sorted_models = sorted(model_scores.items(), key=lambda x: x[1], reverse=True)
-    
-    ranks = {}
-    for rank, (model, score) in enumerate(sorted_models, start=1):
-        ranks[model] = rank
-    
+
+    ranks = {model: rank for rank, (model, _) in enumerate(sorted_models, start=1)}
     winner = sorted_models[0][0]
 
-    result = {
+    return {
         "openai": {**openai_score, "rank": ranks["openai"]},
         "gemini": {**gemini_score, "rank": ranks["gemini"]},
         "claude": {**claude_score, "rank": ranks["claude"]},
         "winner": winner,
     }
-
-    return result
