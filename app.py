@@ -7,15 +7,17 @@ from services.auth_service import check_password
 from services.file_handler import (
     parse_uploaded_files,
     validate_files,
-    extract_scoring_criteria,
-    remove_scoring_criteria,
     extract_persona,
     load_persona,
     remove_persona_header,
+    extract_scoring_prompt_name,
+    load_scoring_prompt,
+    remove_scoring_prompt_header,
 )
 from services.llm_service import OpenAIAgent, GeminiAgent, ClaudeAgent
 from services.logger_service import create_downloadable_json
 from services.scoring_service import score_all_responses
+from rag.retrieval import retrieve_context
 
 
 st.set_page_config(page_title="Multi-LLM Prompt Tester", layout="wide")
@@ -69,17 +71,25 @@ if uploaded_files:
 
             persona_name = extract_persona(prompt_data["content"])
             persona_content = load_persona(persona_name) if persona_name else None
-            
+
             if persona_name:
                 if persona_content:
                     st.info(f"Using Persona: **{persona_name}**")
                 else:
                     st.warning(f"Persona '{persona_name}' not found. Proceeding without persona.")
                     persona_content = None
-            
-            criteria = extract_scoring_criteria(prompt_data["content"])
-            clean_prompt = remove_scoring_criteria(prompt_data["content"])
-            clean_prompt = remove_persona_header(clean_prompt)
+
+            scoring_prompt_name = extract_scoring_prompt_name(prompt_data["content"])
+            scoring_system_prompt = load_scoring_prompt(scoring_prompt_name) if scoring_prompt_name else None
+
+            if scoring_prompt_name:
+                if scoring_system_prompt:
+                    st.info(f"Using Scoring Prompt: **{scoring_prompt_name}**")
+                else:
+                    st.warning(f"Scoring prompt '{scoring_prompt_name}' not found. Using default scoring criteria.")
+
+            clean_prompt = remove_persona_header(prompt_data["content"])
+            clean_prompt = remove_scoring_prompt_header(clean_prompt)
 
             col1, col2, col3 = st.columns(3)
 
@@ -170,18 +180,28 @@ if uploaded_files:
             st.markdown("---")
             st.markdown("### Scoring Responses")
 
+            try:
+                rag_context = retrieve_context(clean_prompt)
+            except Exception as e:
+                st.warning(f"RAG retrieval failed, scoring without context: {str(e)}")
+                rag_context = ""
+
+            if rag_context:
+                chunk_count = len(rag_context.split("\n\n"))
+                st.caption(f"Retrieved {chunk_count} context chunk(s) from the knowledge base.")
+
             with st.spinner("Sending responses to GPT for evaluation..."):
                 try:
                     scores = asyncio.run(
                         score_all_responses(
-                            prompt=prompt_data["content"],
+                            question=clean_prompt,
                             responses={
                                 "openai": state["openai_result"] or {},
                                 "gemini": state["gemini_result"] or {},
                                 "claude": state["claude_result"] or {},
                             },
-                            criteria=criteria,
-                            persona=persona_content,
+                            scoring_system_prompt=scoring_system_prompt,
+                            context=rag_context or None,
                         )
                     )
                 except Exception as e:
@@ -236,13 +256,15 @@ if uploaded_files:
                     ):
                         st.write(justification)
 
-                if criteria:
-                    st.info(f"**Scoring Criteria:** {criteria}")
+                if scoring_prompt_name:
+                    st.info(f"**Scoring Prompt:** {scoring_prompt_name}")
 
             prompt_result = {
                 "filename": prompt_data["filename"],
-                "content": prompt_data["content"],
+                "question": clean_prompt,
                 "persona": persona_name,
+                "scoring_prompt": scoring_prompt_name,
+                "rag_context": rag_context or None,
                 "responses": {
                     "openai": {
                         **(
@@ -291,7 +313,6 @@ if uploaded_files:
                     },
                 },
                 "winner": scores.get("winner") if scores else None,
-                "scoring_criteria": criteria if criteria else None,
             }
             st.session_state.results["prompts"].append(prompt_result)
 

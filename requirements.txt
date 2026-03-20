@@ -10,3 +10,4 @@ langchain-community==0.4.1
 langchain-core==1.2.18
 langchain-text-splitters==1.1.1
 langsmith==0.7.16
+boto3
